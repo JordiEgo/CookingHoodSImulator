@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EGO Hood BLE Observer</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --card: #16213e;
+      --border: #0f3460;
+      --accent: #e94560;
+      --green: #0ead69;
+      --yellow: #f0a500;
+      --blue: #4cc9f0;
+      --text: #eaeaea;
+      --muted: #8899aa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    h1 { font-size: 1.4rem; color: var(--blue); margin-bottom: 0.3rem; }
+    .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+    /* Status LED indicator */
+    .led-bar { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .led {
+      width: 18px; height: 18px; border-radius: 50%;
+      background: #333; box-shadow: 0 0 6px #000;
+      transition: background 0.3s, box-shadow 0.3s;
+      flex-shrink: 0;
+    }
+    .led.red    { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
+    .led.green  { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; }
+    .led.blue   { background: #3498db; box-shadow: 0 0 10px #3498db; }
+    .led.dimblue{ background: #0a3050; box-shadow: 0 0 6px #0a3050; }
+    .led-label { font-size: 0.9rem; }
+
+    /* Buttons */
+    .btn-row { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+        .scan-options {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin: -0.9rem 0 1.4rem;
+          color: var(--muted);
+          font-size: 0.85rem;
+          user-select: none;
+        }
+        .scan-options input[type="checkbox"] {
+          accent-color: var(--blue);
+          width: 16px;
+          height: 16px;
+          cursor: pointer;
+        }
+        .scan-options label {
+          cursor: pointer;
+        }
+    button {
+      padding: 0.55rem 1.2rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary  { background: var(--blue);   color: #000; }
+    .btn-danger   { background: var(--accent);  color: #fff; }
+    .btn-success  { background: var(--green);   color: #000; }
+    .btn-neutral  { background: var(--border);  color: var(--text); }
+
+    /* Grid of cards */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.2rem;
+    }
+    .card h3 { font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 0.75rem; }
+    .field { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; font-size: 0.9rem; }
+    .field .label { color: var(--muted); }
+    .field .value { font-weight: 700; font-size: 1rem; }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .badge-on    { background: #0ead6933; color: var(--green);  border: 1px solid var(--green); }
+    .badge-off   { background: #ffffff11; color: var(--muted);  border: 1px solid #333; }
+    .badge-auto  { background: #4cc9f033; color: var(--blue);   border: 1px solid var(--blue); }
+    .badge-manual{ background: #f0a50033; color: var(--yellow); border: 1px solid var(--yellow); }
+    .badge-plus  { background: #0ead6933; color: var(--green);  border: 1px solid var(--green); }
+    .badge-minus { background: #e9456033; color: var(--accent); border: 1px solid var(--accent); }
+    .badge-none  { background: #ffffff11; color: var(--muted);  border: 1px solid #333; }
+
+    /* Zone bar */
+    .zone-row { margin-bottom: 0.5rem; }
+    .zone-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 2px; }
+    .bar-outer { background: #0f3460; border-radius: 4px; height: 10px; overflow: hidden; }
+    .bar-inner { height: 100%; border-radius: 4px; background: var(--blue); transition: width 0.4s; }
+
+    /* Log */
+    #log {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      height: 220px;
+      overflow-y: auto;
+      color: #c9d1d9;
+    }
+    #log .ts { color: #555; }
+    #log .info  { color: #4cc9f0; }
+    #log .ok    { color: #0ead69; }
+    #log .warn  { color: #f0a500; }
+    #log .err   { color: #e94560; }
+
+    /* Pairing state banner */
+    #pairing-banner {
+      display: none;
+      background: #f0a50022;
+      border: 1px solid var(--yellow);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.9rem;
+      color: var(--yellow);
+      margin-bottom: 1rem;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+    .raw-hex {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .compat-warn {
+      background: #f0a50022;
+      border: 1px solid var(--yellow);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      color: var(--yellow);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Per-block packet visualization */
+    .byte-map { display: flex; gap: 4px; margin: 0.5rem 0 0.6rem; flex-wrap: nowrap; }
+    .byte-box {
+      display: flex; flex-direction: column; align-items: center;
+      min-width: 34px;
+    }
+    .byte-hex {
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem; font-weight: 700;
+      padding: 4px 3px; border-radius: 4px;
+      width: 32px; text-align: center;
+      letter-spacing: 0.5px;
+    }
+    .byte-lbl {
+      font-size: 0.52rem; color: var(--muted);
+      margin-top: 3px; text-align: center; white-space: nowrap;
+    }
+    .bx-id   { background: #4cc9f022; color: var(--blue);   border: 1px solid #4cc9f066; }
+    .bx-zone { background: #f0a50022; color: var(--yellow); border: 1px solid #f0a50066; }
+    .bx-mode { background: #e9456022; color: var(--accent); border: 1px solid #e9456066; }
+    .bx-light{ background: #c39bd322; color: #c39bd3;       border: 1px solid #c39bd366; }
+    .bx-cfg  { background: #1abc9c22; color: #1abc9c;       border: 1px solid #1abc9c66; }
+    .bx-rsv  { background: #ffffff08; color: #555;          border: 1px solid #333; }
+    .bx-hob  { background: #0ead6922; color: var(--green);  border: 1px solid #0ead6966; }
+
+    .block-pkt-log {
+      background: #080c12;
+      border: 1px solid #1a2744;
+      border-radius: 5px;
+      padding: 0.35rem 0.55rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.71rem;
+      height: 80px;
+      overflow-y: auto;
+      color: #7a8fa8;
+      margin-top: 0.4rem;
+    }
+    .block-pkt-log .pts { color: #3a4a5a; }
+    .block-pkt-log .phex { color: #8ab4d4; }
+    .block-decode { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+    .block-decode .dval { color: var(--text); font-weight: 600; }
+    .block-ts-label { font-size: 0.7rem; color: #3a5a7a; margin-bottom: 0.2rem; }
+
+    details.block-section > summary {
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: var(--muted);
+      padding: 0.3rem 0;
+      margin-bottom: 0.4rem;
+      user-select: none;
+    }
+    details.block-section > summary:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<h1>EGO Hood BLE Observer <span style="font-size:0.75rem; color:var(--yellow); font-weight:400;">r00m</span></h1>
+<p class="subtitle">Web BLE nativo (móvil) con fallback a Bleak bridge (escritorio/Mac)</p>
+
+<div class="compat-warn" id="compat-warn">
+  ⚠️ <strong>Móvil (Chrome Android):</strong> usa Web BLE nativo, no necesita Mac.<br>
+  <strong>Escritorio:</strong> si Web BLE no está disponible, se conecta al Bleak bridge del Mac.
+  Asegúrate de que <code>python3 bleak_bridge.py</code> esté en ejecución y ajusta la Bridge URL.
+</div>
+
+<!-- Bridge URL (solo visible en fallback) -->
+<div id="bridge-url-row" style="display:none; align-items:center; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+  <span style="font-size:0.85rem; color:var(--muted); white-space:nowrap;">Bridge URL:</span>
+  <input id="bridge-url-input" type="text"
+    style="flex:1; min-width:220px; padding:0.35rem 0.6rem; background:#0d1117; border:1px solid var(--border); color:var(--text); border-radius:5px; font-family:monospace; font-size:0.85rem;"
+    onchange="state.bridgeUrl = this.value.trim()" />
+  <button class="btn-neutral" style="font-size:0.8rem; padding:0.35rem 0.8rem;" onclick="testBridgeUrl()">Verificar</button>
+</div>
+
+<div id="pairing-banner" id="pairing-banner">⏳ Buscando hob EGO… (pseudo-pairing en progreso)</div>
+
+<!-- LED de estado -->
+<div class="led-bar">
+  <div class="led red" id="led"></div>
+  <span class="led-label" id="led-label">Sin emparejar</span>
+  <span style="margin-left:auto; font-size:0.8rem; color:var(--muted)">MAC emparejada: <code id="paired-mac">—</code></span>
+</div>
+
+<!-- Botones principales -->
+<div class="btn-row">
+  <button class="btn-primary" id="btn-scan" onclick="startScan()">🔍 Iniciar escaneo BLE</button>
+  <button class="btn-danger"  id="btn-stop"   onclick="stopScan()"   disabled>⏹ Detener</button>
+  <button class="btn-neutral" id="btn-clear-pair" onclick="clearPairing()" disabled>🔓 Desemparejar</button>
+  <button class="btn-success" id="btn-test"   onclick="showTestPanel()">🧪 Test Manual</button>
+</div>
+
+<div class="scan-options">
+  <input type="checkbox" id="disable-scan-filter" />
+  <label for="disable-scan-filter">Desactivar filtro BLE por servicio EGO (aceptar todos los anuncios)</label>
+</div>
+
+<!-- Panel de test manual -->
+<div id="test-panel" style="display:none; margin-bottom:1.5rem;">
+  <div class="card">
+    <h3>Inyectar datos de prueba (hex 6 bytes, sin company ID)</h3>
+    <p style="font-size:0.8rem; color:var(--muted); margin-bottom:0.5rem;">
+      Ejemplo Block0 automático: <code>FF 01 00 00 00 FF</code> &nbsp;|&nbsp;
+      Pairing: <code>02 50 41 49 52 03</code> &nbsp;|&nbsp;
+      Unpairing: <code>FF 00 00 00 00 FF</code>
+    </p>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <input id="test-input" type="text" value="FF 01 32 1E 0A 00 FF"
+        style="flex:1; min-width:200px; padding:0.4rem 0.6rem; background:#0d1117; border:1px solid var(--border); color:var(--text); border-radius:5px; font-family:monospace; font-size:0.9rem;" />
+      <button class="btn-primary" onclick="injectTestData()">Inyectar</button>
+    </div>
+    <div style="margin-top:0.5rem; display:flex; gap:0.4rem; flex-wrap:wrap;">
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('02 50 41 49 52 03')">Pairing</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('FF 00 00 00 00 FF')">Unpairing</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 32 1E 0A 05 FF')">Block0 Auto ON</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 B2 9E 8A 85 FF')">Block0 Auto ON (Pwr)</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 32 1E 0A 05 05')">Block0 Manual L5</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 32 1E 0A 05 FE')">Block0 NoCommand</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('41 09 00 00 00 FE')">Block1 Light 9</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 32 1E 0A 05 AA')">Block0 +1</button>
+      <button class="btn-neutral" style="font-size:0.75rem;" onclick="inject('01 32 1E 0A 05 BB')">Block0 -1</button>
+    </div>
+  </div>
+</div>
+
+<!-- Grid de estado -->
+<div class="grid">
+
+  <!-- Hob State -->
+  <div class="card">
+    <h3>Estado del Hob</h3>
+    <div class="field"><span class="label">Hob Power</span>     <span class="value" id="hob-power">—</span></div>
+    <div class="field"><span class="label">Pausa</span>         <span class="value" id="hob-pause">—</span></div>
+    <div class="field"><span class="label">Key Lock</span>      <span class="value" id="hob-lock">—</span></div>
+    <div class="field"><span class="label">Ext. Control</span>  <span class="value" id="hob-extctrl">—</span></div>
+    <div class="field"><span class="label">Hold Key</span>      <span class="value" id="hob-holdkey">—</span></div>
+    <div class="field"><span class="label">Block ID</span>      <span class="value" id="block-id">—</span></div>
+  </div>
+
+  <!-- Modo campana -->
+  <div class="card">
+    <h3>Modo Campana</h3>
+    <div class="field"><span class="label">Modo</span>          <span class="value" id="hood-mode">—</span></div>
+    <div class="field"><span class="label">Nivel manual</span>  <span class="value" id="hood-level">—</span></div>
+    <div class="field"><span class="label">Luz (Block1)</span>  <span class="value" id="hood-light">—</span></div>
+    <div class="field"><span class="label">Tipo datos</span>    <span class="value" id="data-type">—</span></div>
+    <div class="field"><span class="label">Raw Byte5</span>     <span class="value raw-hex" id="raw-byte5">—</span></div>
+  </div>
+
+  <!-- Zonas de cocción -->
+  <div class="card">
+    <h3>Zonas de Cocción (Block 0)</h3>
+    <div id="zones-container">
+      <div class="zone-row"><div class="zone-label">Zona 1</div><div class="bar-outer"><div class="bar-inner" id="z0-bar" style="width:0%"></div></div><div id="z0-val" style="font-size:0.8rem; color:var(--muted); margin-top:2px;">—</div></div>
+      <div class="zone-row"><div class="zone-label">Zona 2</div><div class="bar-outer"><div class="bar-inner" id="z1-bar" style="width:0%"></div></div><div id="z1-val" style="font-size:0.8rem; color:var(--muted); margin-top:2px;">—</div></div>
+      <div class="zone-row"><div class="zone-label">Zona 3</div><div class="bar-outer"><div class="bar-inner" id="z2-bar" style="width:0%"></div></div><div id="z2-val" style="font-size:0.8rem; color:var(--muted); margin-top:2px;">—</div></div>
+      <div class="zone-row"><div class="zone-label">Zona 4</div><div class="bar-outer"><div class="bar-inner" id="z3-bar" style="width:0%"></div></div><div id="z3-val" style="font-size:0.8rem; color:var(--muted); margin-top:2px;">—</div></div>
+    </div>
+  </div>
+
+  <!-- Raw data -->
+  <div class="card">
+    <h3>Último Paquete Raw</h3>
+    <div style="margin-bottom:0.5rem;">
+      <div class="field"><span class="label">Hex (6 bytes)</span><span class="raw-hex" id="raw-6bytes">—</span></div>
+      <div class="field"><span class="label">Paquetes/s</span>   <span class="value" id="pps">—</span></div>
+      <div class="field"><span class="label">Total paquetes</span><span class="value" id="pkt-count">0</span></div>
+      <div class="field"><span class="label">Cambios detectados</span><span class="value" id="change-count">0</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Per-block packet section -->
+<details class="block-section" open style="margin-bottom:1.5rem;">
+  <summary>📦 Paquetes recibidos por bloque — haz clic para plegar</summary>
+  <div class="grid" style="margin-top:0.6rem;">
+
+    <!-- Block 0 -->
+    <div class="card">
+      <h3>Block 0 — Zonas de cocción</h3>
+      <div class="byte-map" id="b0-bytes">
+        <div class="byte-box"><div class="byte-hex bx-id">??</div><div class="byte-lbl">CTRL</div></div>
+        <div class="byte-box"><div class="byte-hex bx-zone">??</div><div class="byte-lbl">ZONA1</div></div>
+        <div class="byte-box"><div class="byte-hex bx-zone">??</div><div class="byte-lbl">ZONA2</div></div>
+        <div class="byte-box"><div class="byte-hex bx-zone">??</div><div class="byte-lbl">ZONA3</div></div>
+        <div class="byte-box"><div class="byte-hex bx-zone">??</div><div class="byte-lbl">ZONA4</div></div>
+        <div class="byte-box"><div class="byte-hex bx-mode">??</div><div class="byte-lbl">MODO</div></div>
+      </div>
+      <div class="block-decode" id="b0-decode">Sin datos</div>
+      <div class="block-ts-label" id="b0-ts"></div>
+      <div class="block-pkt-log" id="b0-log"></div>
+    </div>
+
+    <!-- Block 1 -->
+    <div class="card">
+      <h3>Block 1 — Iluminación</h3>
+      <div class="byte-map" id="b1-bytes">
+        <div class="byte-box"><div class="byte-hex bx-id">??</div><div class="byte-lbl">CTRL</div></div>
+        <div class="byte-box"><div class="byte-hex bx-light">??</div><div class="byte-lbl">LUZ</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">—</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">—</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">—</div></div>
+        <div class="byte-box"><div class="byte-hex bx-mode">??</div><div class="byte-lbl">FE</div></div>
+      </div>
+      <div class="block-decode" id="b1-decode">Sin datos</div>
+      <div class="block-ts-label" id="b1-ts"></div>
+      <div class="block-pkt-log" id="b1-log"></div>
+    </div>
+
+    <!-- Block 2 -->
+    <div class="card">
+      <h3>Block 2 — Reservado</h3>
+      <div class="byte-map" id="b2-bytes">
+        <div class="byte-box"><div class="byte-hex bx-id">??</div><div class="byte-lbl">CTRL</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-mode">??</div><div class="byte-lbl">FE</div></div>
+      </div>
+      <div class="block-decode" id="b2-decode">Sin datos</div>
+      <div class="block-ts-label" id="b2-ts"></div>
+      <div class="block-pkt-log" id="b2-log"></div>
+    </div>
+
+    <!-- Block 3 -->
+    <div class="card">
+      <h3>Block 3 — Configuración</h3>
+      <div class="byte-map" id="b3-bytes">
+        <div class="byte-box"><div class="byte-hex bx-id">??</div><div class="byte-lbl">CTRL</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-rsv">??</div><div class="byte-lbl">RSV</div></div>
+        <div class="byte-box"><div class="byte-hex bx-cfg">??</div><div class="byte-lbl">CFG</div></div>
+      </div>
+      <div class="block-decode" id="b3-decode">Sin datos</div>
+      <div class="block-ts-label" id="b3-ts"></div>
+      <div class="block-pkt-log" id="b3-log"></div>
+    </div>
+
+  </div>
+</details>
+
+<!-- Log -->
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+  <span style="font-size:0.85rem; color:var(--muted)">Log de eventos</span>
+  <button class="btn-neutral" style="font-size:0.75rem; padding:0.3rem 0.7rem;" onclick="clearLog()">Limpiar</button>
+</div>
+<div id="log"></div>
+
+<script>
+// =============================================================================
+// EGO BROADCAST DISSECTOR — equivalente a la clase BrdCastDissector del WiPy
+// =============================================================================
+const EGO_UUID = '85205100-26dd-913f-4b8f-ee97799e304f';
+// Company ID de EGO — el Manufacturer Data en Web BLE viene SIN company ID
+// (el Map lo usa como clave), así que los 6 bytes útiles son el valor directo.
+
+class BrdCastDissector {
+  constructor() {
+    this._packet = null; // Uint8Array de 6 bytes
+  }
+
+  static isPairing(p) {
+    // 02 50 41 49 52 03  => ASCII: .PAIR.
+    return p[0]===0x02 && p[1]===0x50 && p[2]===0x41 && p[3]===0x49 && p[4]===0x52 && p[5]===0x03;
+  }
+
+  static isUnPairing(p) {
+    // FF 00 00 00 00 FF
+    return p[0]===0xFF && p[1]===0x00 && p[2]===0x00 && p[3]===0x00 && p[4]===0x00 && p[5]===0xFF;
+  }
+
+  /** Devuelve true si el paquete cambió (o LOG_ALL=true) */
+  update(p) {
+    if (!this._packet) { this._packet = p; return true; }
+    const changed = !p.every((v,i) => v === this._packet[i]);
+    this._packet = p;
+    return changed; // false = igual que antes
+  }
+
+  get packet() { return this._packet; }
+
+  getBlock()      { return (this._packet[0] >> 6) & 0x03; }
+  getHobPower()   { return !!(this._packet[0] & 0x01); }
+  getPause()      { return !!(this._packet[0] & 0x02); }
+  getKeyLock()    { return !!(this._packet[0] & 0x04); }
+  getExtControl() { return !!(this._packet[0] & 0x08); }
+  getHoldKey()    { return !!(this._packet[0] & 0x20); }
+  isLevelPower()  { return !!(this._packet[1] & 0x80); } // 1=vatios, 0=porcentaje
+  getCookingLevel(z){ return this._packet[z + 1] & 0x7F; }
+  getCookingPower(z){ return (this._packet[z + 1] & 0x7F) * 50; }
+  getLightValue() { return this._packet[1] & 0x0F; }
+  getByte5()      { return this._packet[5] & 0xFF; }
+
+  isAutomaticMode() { return this.getByte5() === 0xFF; }
+  isNoCommandMode() { return this.getByte5() === 0xFE; }
+  isManualMode()    { const v = this.getByte5(); return v >= 0x00 && v <= 0x0A; }
+  isPlusMode()      { const v = this.getByte5(); return v === 0x55 || v === 0xAA; }
+  isMinusMode()     { const v = this.getByte5(); return v === 0xBB || v === 0x66; }
+
+  getModeLabel() {
+    if (this.isAutomaticMode()) return 'Automático';
+    if (this.isNoCommandMode()) return 'Sin Comando';
+    if (this.isPlusMode())      return '+1 (Incrementar)';
+    if (this.isMinusMode())     return '-1 Decrementar)';
+    if (this.isManualMode())    return `Manual (nivel ${this.getByte5()})`;
+    return `Desconocido (0x${this.getByte5().toString(16).toUpperCase()})`;
+  }
+}
+
+// =============================================================================
+// Estado de la aplicación
+// =============================================================================
+const state = {
+  scanning:    false,
+  scan:        null,
+  scanSource:  null,   // webbluetooth | bleak-bridge
+  device:      null,   // BluetoothDevice seleccionado
+  bridgeUrl:   'http://127.0.0.1:8765',
+  bridgeTimer: null,
+  bridgeSeq:   0,
+  pairedMac:   null,   // No disponible en Web BLE; usamos primer hob que hace pairing
+  paired:      false,
+  broadcast:   new BrdCastDissector(),
+  lastBlock0:  null,
+  lastBlock1:  null,
+  pktCount:    0,
+  changeCount: 0,
+  ppsBuffer:   [],
+  lastSec:     Date.now(),
+  ppsVal:      0,
+};
+
+// =============================================================================
+// LOG
+// =============================================================================
+function log(msg, cls='info') {
+  const el = document.getElementById('log');
+  const ts = new Date().toLocaleTimeString('es-ES', {hour12:false}) +
+             '.' + String(Date.now() % 1000).padStart(3,'0');
+  el.innerHTML += `<div><span class="ts">[${ts}]</span> <span class="${cls}">${msg}</span></div>`;
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// =============================================================================
+// UI helpers
+// =============================================================================
+function setLed(color, label) {
+  const led = document.getElementById('led');
+  led.className = 'led ' + color;
+  document.getElementById('led-label').textContent = label;
+}
+
+function makeDissectorFromBytes(bytes) {
+  if (!bytes) return null;
+  const brd = new BrdCastDissector();
+  brd.update(bytes);
+  return brd;
+}
+
+function badge(cond, trueLabel, falseLabel, trueClass, falseClass) {
+  return `<span class="badge ${cond ? trueClass : falseClass}">${cond ? trueLabel : falseLabel}</span>`;
+}
+function setField(id, html) { document.getElementById(id).innerHTML = html; }
+
+function updateUI(brd) {
+  const block = brd.getBlock();
+  const block0 = makeDissectorFromBytes(state.lastBlock0);
+  const block1 = makeDissectorFromBytes(state.lastBlock1);
+  const display = block0 || brd;
+  const hobPower = display.getHobPower();
+
+  setField('block-id',    `<span class="badge badge-none">Block ${block}</span>`);
+  setField('hob-power',   badge(hobPower, 'ON', 'OFF', 'badge-on', 'badge-off'));
+  setField('hob-pause',   badge(display.getPause(),      'ACTIVA','inactiva', 'badge-minus','badge-off'));
+  setField('hob-lock',    badge(display.getKeyLock(),    'BLOQUEADO','libre',  'badge-minus','badge-off'));
+  setField('hob-extctrl', badge(display.getExtControl(), 'ACTIVO','inactivo', 'badge-on',   'badge-off'));
+  setField('hob-holdkey', badge(display.getHoldKey(),    'PULSADA','libre',   'badge-plus', 'badge-off'));
+
+  const mode = block0 ? block0.getModeLabel() : '—';
+  let modeClass = 'badge-none';
+  if (block0 && block0.isAutomaticMode()) modeClass = 'badge-auto';
+  else if (block0 && block0.isManualMode()) modeClass = 'badge-manual';
+  else if (block0 && block0.isPlusMode())   modeClass = 'badge-plus';
+  else if (block0 && block0.isMinusMode())  modeClass = 'badge-minus';
+  setField('hood-mode', `<span class="badge ${modeClass}">${mode}</span>`);
+  setField('hood-level', block0 && block0.isManualMode() ? block0.getByte5() : '—');
+
+  if (block1) {
+    const light = block1.getLightValue();
+    setField('hood-light', `${light} (${Math.round(light/15*100)}%)`);
+  } else {
+    setField('hood-light', '—');
+  }
+
+  // Tipo de datos
+  if (block0) {
+    const isPwr = block0.isLevelPower();
+    setField('data-type', badge(isPwr, 'Potencia (W)', 'Nivel (%)', 'badge-auto', 'badge-manual'));
+
+    // Zonas
+    for (let z = 0; z < 4; z++) {
+      const raw = block0.getCookingLevel(z);
+      let label, pct;
+      if (isPwr) {
+        const w = raw * 50;
+        label = `${w} W`;
+        pct = (raw / 0x7F) * 100;
+      } else {
+        label = `${raw}%`;
+        pct = raw;
+      }
+      document.getElementById(`z${z}-bar`).style.width = pct + '%';
+      document.getElementById(`z${z}-val`).textContent = label;
+    }
+  } else {
+    setField('data-type', '—');
+  }
+
+  // Byte5 modo campana: solo válido en Block0
+  setField('raw-byte5', block0 ? `0x${block0.getByte5().toString(16).toUpperCase().padStart(2,'0')}` : '—');
+  setField('raw-6bytes', Array.from(brd.packet).map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' '));
+  setField('pkt-count', state.pktCount);
+  setField('change-count', state.changeCount);
+
+  // LED de color según modo (igual que WiPy rgbled)
+  if (!state.paired) {
+    setLed('red', 'Sin emparejar');
+  } else if (block0 && block0.isAutomaticMode() && hobPower) {
+    setLed('blue', 'Emparejado · Automático ON');
+  } else if (block0 && block0.isAutomaticMode() && !hobPower) {
+    setLed('dimblue', 'Emparejado · Automático OFF');
+  } else {
+    setLed('green', 'Emparejado');
+  }
+}
+
+function describePacket(brd) {
+  const block = brd.getBlock();
+  if (block === 0) {
+    const hobPow = brd.getHobPower() ? 'ON' : 'OFF';
+    return `Block0 | Hob:${hobPow} | Modo:${brd.getModeLabel()} | Tipo:${brd.isLevelPower() ? 'Potencia' : 'Nivel'} | Raw`;
+  }
+  if (block === 1) {
+    return `Block1 | Luz:${brd.getLightValue()} | Raw`;
+  }
+  if (block === 2) {
+    return 'Block2 | Reservado | Raw';
+  }
+  if (block === 3) {
+    return `Block3 | Config byte5:0x${brd.getByte5().toString(16).toUpperCase().padStart(2,'0')} | Raw`;
+  }
+  return `Block? | Raw`;
+}
+
+// =============================================================================
+// Per-block packet visualization
+// =============================================================================
+function bHex(n) { return n.toString(16).toUpperCase().padStart(2, '0'); }
+function bHexStr(bytes) { return Array.from(bytes).map(bHex).join(' '); }
+
+function renderByteMap(elId, defs) {
+  // defs: array of {hex, label, cls}
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = defs.map(d =>
+    `<div class="byte-box"><div class="byte-hex ${d.cls}">${d.hex}</div><div class="byte-lbl">${d.label}</div></div>`
+  ).join('');
+}
+
+function updateBlockCard(blockId, bytes6, brd) {
+  const p = bytes6;
+  const rawStr = bHexStr(p);
+  const ts = new Date().toLocaleTimeString('es-ES', {hour12:false}) +
+             '.' + String(Date.now() % 1000).padStart(3, '0');
+  const hobBadge = brd.getHobPower()
+    ? '<span class="badge badge-on">ON</span>'
+    : '<span class="badge badge-off">OFF</span>';
+
+  let byteDefs = [];
+  let decodeLines = [];
+
+  if (blockId === 0) {
+    const pwr = brd.isLevelPower();
+    byteDefs = [
+      { hex: bHex(p[0]), label: 'CTRL',              cls: 'bx-id'   },
+      { hex: bHex(p[1]), label: pwr ? 'Z1-W' : 'Z1-%', cls: 'bx-zone' },
+      { hex: bHex(p[2]), label: pwr ? 'Z2-W' : 'Z2-%', cls: 'bx-zone' },
+      { hex: bHex(p[3]), label: pwr ? 'Z3-W' : 'Z3-%', cls: 'bx-zone' },
+      { hex: bHex(p[4]), label: pwr ? 'Z4-W' : 'Z4-%', cls: 'bx-zone' },
+      { hex: bHex(p[5]), label: 'MODO',              cls: 'bx-mode' },
+    ];
+    const zones = [0,1,2,3].map(z => {
+      const raw = brd.getCookingLevel(z);
+      return pwr ? `Z${z+1}:<span class="dval">${raw*50}W</span>` : `Z${z+1}:<span class="dval">${raw}%</span>`;
+    }).join(' &nbsp; ');
+    decodeLines = [
+      `Hob:${hobBadge} &nbsp; Formato:<span class="dval">${pwr ? 'Potencia(W)' : 'Nivel(%)'}</span>`,
+      zones,
+      `Modo: <span class="dval">${brd.getModeLabel()}</span>`,
+    ];
+  } else if (blockId === 1) {
+    const light = brd.getLightValue();
+    byteDefs = [
+      { hex: bHex(p[0]), label: 'CTRL', cls: 'bx-id'    },
+      { hex: bHex(p[1]), label: 'LUZ',  cls: 'bx-light' },
+      { hex: bHex(p[2]), label: '—',    cls: 'bx-rsv'   },
+      { hex: bHex(p[3]), label: '—',    cls: 'bx-rsv'   },
+      { hex: bHex(p[4]), label: '—',    cls: 'bx-rsv'   },
+      { hex: bHex(p[5]), label: 'FE',   cls: 'bx-mode'  },
+    ];
+    decodeLines = [
+      `Hob:${hobBadge}`,
+      `Luz: <span class="dval">${light}/15</span> &nbsp; (${Math.round(light/15*100)}%)`,
+    ];
+  } else if (blockId === 2) {
+    byteDefs = [
+      { hex: bHex(p[0]), label: 'CTRL', cls: 'bx-id'   },
+      { hex: bHex(p[1]), label: 'RSV',  cls: 'bx-rsv'  },
+      { hex: bHex(p[2]), label: 'RSV',  cls: 'bx-rsv'  },
+      { hex: bHex(p[3]), label: 'RSV',  cls: 'bx-rsv'  },
+      { hex: bHex(p[4]), label: 'RSV',  cls: 'bx-rsv'  },
+      { hex: bHex(p[5]), label: 'FE',   cls: 'bx-mode' },
+    ];
+    decodeLines = [
+      `Hob:${hobBadge}`,
+      `<span style="color:var(--muted)">Reservado / Futuro uso</span>`,
+    ];
+  } else if (blockId === 3) {
+    byteDefs = [
+      { hex: bHex(p[0]), label: 'CTRL', cls: 'bx-id'  },
+      { hex: bHex(p[1]), label: 'RSV',  cls: 'bx-rsv' },
+      { hex: bHex(p[2]), label: 'RSV',  cls: 'bx-rsv' },
+      { hex: bHex(p[3]), label: 'RSV',  cls: 'bx-rsv' },
+      { hex: bHex(p[4]), label: 'RSV',  cls: 'bx-rsv' },
+      { hex: bHex(p[5]), label: 'CFG',  cls: 'bx-cfg' },
+    ];
+    decodeLines = [
+      `Hob:${hobBadge}`,
+      `Config B5: <span class="dval">0x${bHex(p[5])}</span>`,
+    ];
+  }
+
+  renderByteMap(`b${blockId}-bytes`, byteDefs);
+  document.getElementById(`b${blockId}-decode`).innerHTML = decodeLines.join('<br>');
+  document.getElementById(`b${blockId}-ts`).textContent = `Último: ${ts}`;
+
+  const logEl = document.getElementById(`b${blockId}-log`);
+  logEl.innerHTML += `<div><span class="pts">[${ts}]</span> <span class="phex">${rawStr}</span></div>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearBlockCards() {
+  for (let b = 0; b < 4; b++) {
+    document.getElementById(`b${b}-decode`).textContent = 'Sin datos';
+    document.getElementById(`b${b}-ts`).textContent = '';
+    document.getElementById(`b${b}-log`).innerHTML = '';
+    renderByteMap(`b${b}-bytes`, [
+      {hex:'??',label:'CTRL', cls:'bx-id'},
+      {hex:'??',label:'B1',   cls:'bx-rsv'},
+      {hex:'??',label:'B2',   cls:'bx-rsv'},
+      {hex:'??',label:'B3',   cls:'bx-rsv'},
+      {hex:'??',label:'B4',   cls:'bx-rsv'},
+      {hex:'??',label:'B5',   cls:'bx-rsv'},
+    ]);
+  }
+}
+
+// =============================================================================
+// Procesamiento de paquete (6 bytes sin company ID)
+// =============================================================================
+function processPacket(bytes6, mac) {
+  state.pktCount++;
+  state.ppsBuffer.push(Date.now());
+
+  const brd = state.broadcast;
+
+  // Si no está emparejado, buscamos la secuencia de pairing
+  if (!state.paired) {
+    if (BrdCastDissector.isPairing(bytes6)) {
+      state.paired = true;
+      state.pairedMac = mac || '(desconocida)';
+      document.getElementById('paired-mac').textContent = state.pairedMac;
+      setLed('green', 'Emparejado');
+      document.getElementById('pairing-banner').style.display = 'none';
+      document.getElementById('btn-clear-pair').disabled = false;
+      log(`✅ Emparejado con hob MAC: ${state.pairedMac}`, 'ok');
+      brd.update(bytes6);
+    } else {
+      if (state.pktCount % 10 === 1)
+        log(`⏳ Paquete recibido (${state.pktCount} total) — esperando trama PAIR del hob…`, 'warn');
+    }
+    return;
+  }
+
+  // Ya emparejado y misma fuente
+  if (mac && mac !== state.pairedMac && state.pairedMac !== '(desconocida)') return;
+
+  // Unpairing
+  if (BrdCastDissector.isUnPairing(bytes6)) {
+    log('🔓 Unpairing recibido — borrando emparejamiento', 'warn');
+    clearPairing();
+    return;
+  }
+
+  // Pairing repetido — ignorar
+  if (BrdCastDissector.isPairing(bytes6)) return;
+
+  // Datos normales
+  const changed = brd.update(bytes6);
+  if (changed) {
+    const block = brd.getBlock();
+    if (block === 0) {
+      state.lastBlock0 = new Uint8Array(bytes6);
+    } else if (block === 1) {
+      state.lastBlock1 = new Uint8Array(bytes6);
+    }
+
+    state.changeCount++;
+    log(`${describePacket(brd)}: ${
+      Array.from(bytes6).map(b=>b.toString(16).toUpperCase().padStart(2,'0')).join(' ')
+    }`, 'info');
+    updateBlockCard(block, bytes6, brd);
+    updateUI(brd);
+    setField('change-count', state.changeCount);
+  }
+  setField('pkt-count', state.pktCount);
+}
+
+// =============================================================================
+// PPS counter
+// =============================================================================
+setInterval(() => {
+  const now = Date.now();
+  state.ppsBuffer = state.ppsBuffer.filter(t => now - t < 1000);
+  setField('pps', state.ppsBuffer.length);
+}, 500);
+
+// =============================================================================
+// Web Bluetooth — watchAdvertisements con fallback a Bleak bridge
+// =============================================================================
+async function startScan() {
+  if (!navigator.bluetooth) {
+    log('❌ Web Bluetooth no disponible. Intentando Bleak bridge…', 'warn');
+    showBridgeRow();
+    await startBleakBridgeScan();
+    return;
+  }
+
+  try {
+    document.getElementById('btn-scan').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    const disableFilter = document.getElementById('disable-scan-filter').checked;
+    const requestOptions = disableFilter
+      ? { acceptAllDevices: true, optionalServices: [EGO_UUID] }
+      : { filters: [{ services: [EGO_UUID] }] };
+
+    log('🔍 Selecciona el hob EGO en el diálogo del navegador…', 'info');
+    state.device = await navigator.bluetooth.requestDevice(requestOptions);
+    log(`✅ Dispositivo seleccionado: ${state.device.name || state.device.id}`, 'ok');
+
+    state.device.addEventListener('advertisementreceived', handleAdvertisement);
+    await state.device.watchAdvertisements();
+
+    state.scanning = true;
+    state.scanSource = 'webbluetooth';
+    document.getElementById('pairing-banner').style.display = state.paired ? 'none' : 'block';
+    log('✅ Escuchando anuncios BLE del hob…', 'ok');
+  } catch(e) {
+    log('❌ Error Web BLE: ' + e.message + '. Intentando Bleak bridge…', 'warn');
+    showBridgeRow();
+    await startBleakBridgeScan();
+  }
+}
+
+function handleAdvertisement(event) {
+  if (event.manufacturerData && event.manufacturerData.size > 0) {
+    for (const [companyId, dataView] of event.manufacturerData) {
+      if (dataView.byteLength >= 6) {
+        const bytes6 = new Uint8Array(dataView.buffer, dataView.byteOffset, 6);
+        processPacket(bytes6, event.device.id);
+      }
+    }
+  }
+}
+
+// =============================================================================
+// Bleak bridge fallback
+// =============================================================================
+function showBridgeRow() {
+  const row = document.getElementById('bridge-url-row');
+  row.style.display = 'flex';
+  document.getElementById('bridge-url-input').value = state.bridgeUrl;
+}
+
+async function testBridgeUrl() {
+  state.bridgeUrl = document.getElementById('bridge-url-input').value.trim();
+  try {
+    const r = await fetch(`${state.bridgeUrl}/bridge/status`, { cache: 'no-store' });
+    const j = await r.json();
+    log(j.ok ? '✅ Bridge accesible: ' + state.bridgeUrl : '⚠️ Bridge responde pero status no OK', j.ok ? 'ok' : 'warn');
+  } catch(e) {
+    log('❌ No se puede contactar el bridge: ' + e.message, 'err');
+  }
+}
+
+async function startBleakBridgeScan() {
+  try {
+    document.getElementById('btn-scan').disabled = true;
+    document.getElementById('btn-stop').disabled = false;
+    const statusResp = await fetch(`${state.bridgeUrl}/bridge/status`, { cache: 'no-store' });
+    if (!statusResp.ok) throw new Error(`HTTP ${statusResp.status}`);
+    const status = await statusResp.json();
+    if (!status.ok) throw new Error('bridge status no OK');
+    state.scanning = true;
+    state.scanSource = 'bleak-bridge';
+    state.bridgeSeq = Math.max(0, Number(status.latest_seq || 0) - 30);
+    document.getElementById('pairing-banner').style.display = state.paired ? 'none' : 'block';
+    state.bridgeTimer = setInterval(pollBleakBridge, 250);
+    log('✅ Escaneo activo vía Bleak bridge: ' + state.bridgeUrl, 'ok');
+    return true;
+  } catch(e) {
+    state.scanning = false;
+    state.scanSource = null;
+    document.getElementById('btn-scan').disabled = false;
+    document.getElementById('btn-stop').disabled = true;
+    log('❌ Bridge no disponible: ' + e.message, 'err');
+    log('ℹ️ Arranca: python3 bleak_bridge.py (en carpeta ble_client).', 'warn');
+    return false;
+  }
+}
+
+async function pollBleakBridge() {
+  if (!state.scanning || state.scanSource !== 'bleak-bridge') return;
+  try {
+    const resp = await fetch(`${state.bridgeUrl}/bridge/poll?since=${state.bridgeSeq}`, { cache: 'no-store' });
+    if (!resp.ok) return;
+    const body = await resp.json();
+    if (!body.ok) return;
+    const packets = Array.isArray(body.packets) ? body.packets : [];
+    for (const pkt of packets) {
+      if (Array.isArray(pkt.bytes6) && pkt.bytes6.length >= 6) {
+        processPacket(new Uint8Array(pkt.bytes6.slice(0, 6)), pkt.mac || '(bleak)');
+      } else if (typeof pkt.hex6 === 'string') {
+        const parts = pkt.hex6.trim().split(/\s+/).slice(0, 6);
+        if (parts.length === 6) {
+          const bytes6 = new Uint8Array(parts.map(h => parseInt(h, 16)));
+          if (!bytes6.some(Number.isNaN)) processPacket(bytes6, pkt.mac || '(bleak)');
+        }
+      }
+    }
+    state.bridgeSeq = Number(body.latest_seq || state.bridgeSeq);
+  } catch(e) {
+    log('⚠️ Error leyendo bridge: ' + e.message, 'warn');
+  }
+}
+
+function stopScan() {
+  if (state.bridgeTimer) {
+    clearInterval(state.bridgeTimer);
+    state.bridgeTimer = null;
+  }
+  if (state.device) {
+    try { state.device.removeEventListener('advertisementreceived', handleAdvertisement); } catch(e) {}
+    try { state.device.unwatchAdvertisements(); } catch(e) {}
+    state.device = null;
+  }
+  state.scanning = false;
+  state.scanSource = null;
+  document.getElementById('btn-scan').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+  document.getElementById('pairing-banner').style.display = 'none';
+  log('⏹ Escaneo detenido', 'warn');
+}
+
+function clearPairing() {
+  state.paired = false;
+  state.pairedMac = null;
+  state.broadcast = new BrdCastDissector();
+  state.lastBlock0 = null;
+  state.lastBlock1 = null;
+  clearBlockCards();
+  document.getElementById('paired-mac').textContent = '—';
+  document.getElementById('btn-clear-pair').disabled = true;
+  setLed('red', 'Sin emparejar');
+  if (state.scanning) {
+    document.getElementById('pairing-banner').style.display = 'block';
+  }
+  log('🔓 Emparejamiento borrado. Buscando nuevo hob…', 'warn');
+}
+
+// =============================================================================
+// Test manual (inyectar datos sin hardware BLE)
+// =============================================================================
+function showTestPanel() {
+  const p = document.getElementById('test-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+
+function inject(hex) {
+  document.getElementById('test-input').value = hex;
+  injectTestData();
+}
+
+function injectTestData() {
+  const raw = document.getElementById('test-input').value.trim();
+  const parts = raw.split(/[\s,]+/).filter(Boolean);
+  if (parts.length < 6) {
+    log('❌ Necesitas exactamente 6 bytes hex separados por espacios', 'err');
+    return;
+  }
+  const bytes6 = new Uint8Array(parts.slice(0,6).map(h => parseInt(h, 16)));
+  if (bytes6.some(isNaN)) {
+    log('❌ Valor hex inválido', 'err');
+    return;
+  }
+
+  // Si no está emparejado y no es pairing, primero hacer pairing automático en test
+  if (!state.paired && !BrdCastDissector.isPairing(bytes6)) {
+    log('ℹ️ Auto-emparejando en modo test (MAC: TEST_HOB)', 'warn');
+    state.paired = true;
+    state.pairedMac = 'TEST_HOB';
+    document.getElementById('paired-mac').textContent = 'TEST_HOB';
+    document.getElementById('btn-clear-pair').disabled = false;
+  }
+
+  processPacket(bytes6, state.pairedMac || 'TEST_HOB');
+}
+
+// =============================================================================
+// Ocultar aviso si el browser soporta Web BLE
+// =============================================================================
+if (navigator.bluetooth) {
+  document.getElementById('compat-warn').style.display = 'none';
+}
+
+log('🚀 r00m listo. Móvil: pulsa "Iniciar escaneo BLE". Escritorio: ajusta Bridge URL si hace falta.', 'ok');
+</script>
+</body>
+</html>
