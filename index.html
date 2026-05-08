@@ -584,7 +584,8 @@ function updateUI(brd) {
     setField('data-type', '—');
   }
 
-  setField('raw-byte5', `0x${brd.getByte5().toString(16).toUpperCase().padStart(2,'0')}`);
+  // Byte5 modo campana: solo válido en Block0
+  setField('raw-byte5', block0 ? `0x${block0.getByte5().toString(16).toUpperCase().padStart(2,'0')}` : '—');
   setField('raw-6bytes', Array.from(brd.packet).map(b => b.toString(16).toUpperCase().padStart(2,'0')).join(' '));
   setField('pkt-count', state.pktCount);
   setField('change-count', state.changeCount);
@@ -752,6 +753,9 @@ function processPacket(bytes6, mac) {
       document.getElementById('btn-clear-pair').disabled = false;
       log(`✅ Emparejado con hob MAC: ${state.pairedMac}`, 'ok');
       brd.update(bytes6);
+    } else {
+      if (state.pktCount % 10 === 1)
+        log(`⏳ Paquete recibido (${state.pktCount} total) — esperando trama PAIR del hob…`, 'warn');
     }
     return;
   }
@@ -877,7 +881,7 @@ async function startBleakBridgeScan() {
     if (!status.ok) throw new Error('bridge status no OK');
     state.scanning = true;
     state.scanSource = 'bleak-bridge';
-    state.bridgeSeq = Number(status.latest_seq || 0);
+    state.bridgeSeq = Math.max(0, Number(status.latest_seq || 0) - 30);
     document.getElementById('pairing-banner').style.display = state.paired ? 'none' : 'block';
     state.bridgeTimer = setInterval(pollBleakBridge, 250);
     log('✅ Escaneo activo vía Bleak bridge: ' + state.bridgeUrl, 'ok');
@@ -993,10 +997,6 @@ function injectTestData() {
 // =============================================================================
 // Ocultar aviso si el browser soporta Web BLE
 // =============================================================================
-if (navigator.bluetooth) {
-  document.getElementById('compat-warn').style.display = 'none';
-}
-
 if (navigator.bluetooth) {
   document.getElementById('compat-warn').style.display = 'none';
 }
